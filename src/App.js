@@ -119,11 +119,19 @@ function App() {
       const lineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
       const allCoordinates = [];
       const allLines = [];
+      const allFirstAndLastCoords = [];
 
-      lineFeatures.forEach((line) => {
-        allCoordinates.push(...line.geometry.coordinates);
-        allLines.push(line.geometry.coordinates)
-      });
+
+    lineFeatures.forEach((line) => {
+      allCoordinates.push(...line.geometry.coordinates);
+      allLines.push(line.geometry.coordinates);
+      // Отфильтровываем линии, оставляя только первую и последнюю точку
+      const filteredLine = [
+        line.geometry.coordinates[0],
+        line.geometry.coordinates[line.geometry.coordinates.length - 1]
+      ];
+      allFirstAndLastCoords.push(filteredLine);
+    });
 
       // Проверяем, что есть хотя бы два уникальных координатных пункта
       if (allCoordinates.length < 2) {
@@ -131,6 +139,7 @@ function App() {
         return;
       }
       console.log("все координаты",allCoordinates)
+      console.log("все первые и последние координаты",allFirstAndLastCoords)
       console.log("все линии",allLines)
       const combined = turf.lineString(allCoordinates);
       console.log("всё вместе",combined)
