@@ -4,12 +4,15 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import L from 'leaflet';
 import 'leaflet-draw';
+import * as turf from '@turf/turf';
 import './App.css';
 
 function App() {
   const [geoData, setGeoData] = useState({ type: 'FeatureCollection', features: [] });
+  const [selectionMode, setSelectionMode] = useState(false);
   const geoJsonLayerRef = useRef(null);
   const drawControlRef = useRef(null);
+  const selectedLinesRef = useRef([]);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -35,7 +38,17 @@ function App() {
         onEachFeature: (feature, layer) => {
           if (feature.geometry.type === "LineString") {
             layer.on('click', () => {
-              console.log('LineString feature:', feature);
+              if (selectionMode) {
+                if (selectedLinesRef.current.includes(layer)) {
+                  layer.setStyle({ color: '#3388ff' }); // Снимаем выделение
+                  selectedLinesRef.current = selectedLinesRef.current.filter(l => l !== layer);
+                } else {
+                  layer.setStyle({ color: 'red' }); // Выделяем линию
+                  selectedLinesRef.current.push(layer);
+                }
+              } else {
+                console.log('LineString feature:', feature);
+              }
             });
           }
         },
@@ -95,12 +108,54 @@ function App() {
     });
   };
 
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    selectedLinesRef.current.forEach(layer => layer.setStyle({ color: '#3388ff' })); // Снимаем выделение с линий
+    selectedLinesRef.current = [];
+  };
+
+  const createPolygonFromSelectedLines = () => {
+    if (selectedLinesRef.current.length > 1) {
+      const lineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
+      const allCoordinates = [];
+      const allLines = [];
+
+      lineFeatures.forEach((line) => {
+        allCoordinates.push(...line.geometry.coordinates);
+        allLines.push(line.geometry.coordinates)
+      });
+
+      // Проверяем, что есть хотя бы два уникальных координатных пункта
+      if (allCoordinates.length < 2) {
+        console.error('Not enough coordinates to create a polygon');
+        return;
+      }
+      console.log("все координаты",allCoordinates)
+      console.log("все линии",allLines)
+      const combined = turf.lineString(allCoordinates);
+      console.log("всё вместе",combined)
+      const polygon = turf.lineToPolygon(combined, { autoComplete: true, orderCoords: true });
+
+      if (polygon) {
+        setGeoData((prevGeoData) => ({
+          type: 'FeatureCollection',
+          features: [...prevGeoData.features, polygon],
+        }));
+      }
+
+      selectedLinesRef.current.forEach(layer => geoJsonLayerRef.current.removeLayer(layer));
+      selectedLinesRef.current = [];
+    }
+  };
+
   return (
     <div className="App">
       <h2>GeoJSON Map Viewer</h2>
       <input type="file" accept=".geojson" onChange={handleFileUpload} />
       <button onClick={clearGeoData}>Clear GeoJSON Data</button>
       <button onClick={initializeDrawControl}>Draw Line</button>
+      <button onClick={toggleSelectionMode}>{selectionMode ? 'Exit Selection Mode' : 'Enter Selection Mode'}</button>
+      <button onClick={createPolygonFromSelectedLines} disabled={!selectionMode}>Create Polygon from Selected Lines</button>
       <div className="map-container">
         <MapContainer 
           style={{ height: "500px", width: "100%" }} 
