@@ -7,7 +7,7 @@ import 'leaflet-draw';
 import './App.css';
 
 function App() {
-  const [geoData, setGeoData] = useState(null);
+  const [geoData, setGeoData] = useState({ type: 'FeatureCollection', features: [] });
   const geoJsonLayerRef = useRef(null);
   const drawControlRef = useRef(null);
 
@@ -28,21 +28,21 @@ function App() {
   const GeoJSONWithBounds = ({ data }) => {
     const map = useMap();
     React.useEffect(() => {
-      if (data) {
-        if (geoJsonLayerRef.current) {
-          geoJsonLayerRef.current.clearLayers();
-        }
-        const geoJsonLayer = L.geoJSON(data, {
-          onEachFeature: (feature, layer) => {
-            if (feature.geometry.type === "LineString") {
-              layer.on('click', () => {
-                console.log('LineString feature:', feature);
-              });
-            }
-          },
-        });
-        geoJsonLayerRef.current = geoJsonLayer;
-        geoJsonLayer.addTo(map);
+      if (geoJsonLayerRef.current) {
+        geoJsonLayerRef.current.clearLayers();
+      }
+      const geoJsonLayer = L.geoJSON(data, {
+        onEachFeature: (feature, layer) => {
+          if (feature.geometry.type === "LineString") {
+            layer.on('click', () => {
+              console.log('LineString feature:', feature);
+            });
+          }
+        },
+      });
+      geoJsonLayerRef.current = geoJsonLayer;
+      geoJsonLayer.addTo(map);
+      if (data.features.length > 0) {
         map.fitBounds(geoJsonLayer.getBounds());
       }
     }, [data, map]);
@@ -51,10 +51,7 @@ function App() {
   };
 
   const clearGeoData = () => {
-    if (geoJsonLayerRef.current) {
-      geoJsonLayerRef.current.clearLayers();
-      geoJsonLayerRef.current = null;
-    }
+    setGeoData({ type: 'FeatureCollection', features: [] });
   };
 
   const initializeDrawControl = () => {
@@ -77,13 +74,20 @@ function App() {
 
     map.on(L.Draw.Event.CREATED, (event) => {
       const layer = event.layer;
+      const drawnFeature = layer.toGeoJSON();
+
+      // Добавляем новую линию в geoData
+      setGeoData((prevGeoData) => ({
+        type: 'FeatureCollection',
+        features: [...prevGeoData.features, drawnFeature],
+      }));
+
+      // Добавляем слой на карту и в geoJsonLayer
       if (geoJsonLayerRef.current) {
         geoJsonLayerRef.current.addLayer(layer);
-        if (layer instanceof L.Polyline) {
-          layer.on('click', () => {
-            console.log('Drawn LineString layer:', layer.toGeoJSON());
-          });
-        }
+        layer.on('click', () => {
+          console.log('Drawn LineString layer:', layer.toGeoJSON());
+        });
       } else {
         geoJsonLayerRef.current = new L.FeatureGroup().addTo(map);
         geoJsonLayerRef.current.addLayer(layer);
