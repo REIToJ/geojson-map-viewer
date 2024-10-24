@@ -35,6 +35,7 @@ function App() {
         geoJsonLayerRef.current.clearLayers();
       }
       const geoJsonLayer = L.geoJSON(data, {
+        pointToLayer: () => null, // Отключаем загрузку маркеров для точек
         onEachFeature: (feature, layer) => {
           if (feature.geometry.type === "LineString") {
             layer.on('click', () => {
