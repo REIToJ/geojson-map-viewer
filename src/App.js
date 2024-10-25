@@ -115,46 +115,74 @@ function App() {
     selectedLinesRef.current = [];
   };
 
-  const createPolygonFromSelectedLines = () => {
+  const createConnectingLines = () => {
     if (selectedLinesRef.current.length > 1) {
       const lineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
-      const allCoordinates = [];
-      const allLines = [];
       const allFirstAndLastCoords = [];
 
+      // Получаем все первые и последние координаты каждой линии
+      lineFeatures.forEach((line) => {
+        allFirstAndLastCoords.push(line.geometry.coordinates[0]);
+        allFirstAndLastCoords.push(line.geometry.coordinates[line.geometry.coordinates.length - 1]);
+      });
 
-    lineFeatures.forEach((line) => {
-      allCoordinates.push(...line.geometry.coordinates);
-      allLines.push(line.geometry.coordinates);
-      // Отфильтровываем линии, оставляя только первую и последнюю точку
-      const filteredLine = [
-        line.geometry.coordinates[0],
-        line.geometry.coordinates[line.geometry.coordinates.length - 1]
-      ];
-      allFirstAndLastCoords.push(filteredLine);
-    });
+      // Храним уже соединенные точки, чтобы не создавать дубликаты соединений
+      const connectedPoints = new Set();
+      const map = geoJsonLayerRef.current._map;
 
-      // Проверяем, что есть хотя бы два уникальных координатных пункта
-      if (allCoordinates.length < 2) {
-        console.error('Not enough coordinates to create a polygon');
-        return;
+      allFirstAndLastCoords.forEach((pointA, indexA) => {
+        if (connectedPoints.has(indexA)) return;
+
+        let minDistance = Infinity;
+        let closestPointIndex = -1;
+        let closestPoint = null;
+
+        // Находим ближайшую точку, которая еще не была соединена
+        allFirstAndLastCoords.forEach((pointB, indexB) => {
+          if (indexA !== indexB && !connectedPoints.has(indexB)) {
+            const distance = turf.distance(turf.point(pointA), turf.point(pointB));
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestPoint = pointB;
+              closestPointIndex = indexB;
+            }
+          }
+        });
+
+        if (closestPoint) {
+          // Создаем новую линию между pointA и closestPoint
+          const newLine = turf.lineString([pointA, closestPoint]);
+
+          // Добавляем новую линию на карту
+          const newLineLayer = L.geoJSON(newLine, { color: 'blue' }).addTo(map);
+
+          // Добавляем новую линию в geoJsonLayer
+          if (geoJsonLayerRef.current) {
+            geoJsonLayerRef.current.addLayer(newLineLayer);
+          }
+
+          // Помечаем точки как соединенные
+          connectedPoints.add(indexA);
+          connectedPoints.add(closestPointIndex);
+        }
+      });
+    }
+  };
+
+  const createPolygonFromLines = () => {
+    if (geoJsonLayerRef.current) {
+      const features = geoJsonLayerRef.current.toGeoJSON();
+      const multiLineString = turf.featureCollection(features.features.filter(f => f.geometry.type === 'LineString'));
+
+      // Используем polygonize для создания полигонов из замкнутых линий
+      const polygons = turf.polygonize(multiLineString);
+
+      if (polygons && polygons.features.length > 0) {
+        // Добавляем полигоны на карту
+        const map = geoJsonLayerRef.current._map;
+        const polygonLayer = L.geoJSON(polygons, { color: 'green' }).addTo(map);
+        geoJsonLayerRef.current.addLayer(polygonLayer);
       }
-      console.log("все координаты",allCoordinates)
-      console.log("все первые и последние координаты",allFirstAndLastCoords)
-      console.log("все линии",allLines)
-      const combined = turf.lineString(allCoordinates);
-      console.log("всё вместе",combined)
-      const polygon = turf.lineToPolygon(combined, { autoComplete: true, orderCoords: true });
-
-      if (polygon) {
-        setGeoData((prevGeoData) => ({
-          type: 'FeatureCollection',
-          features: [...prevGeoData.features, polygon],
-        }));
-      }
-
-      selectedLinesRef.current.forEach(layer => geoJsonLayerRef.current.removeLayer(layer));
-      selectedLinesRef.current = [];
     }
   };
 
@@ -165,7 +193,8 @@ function App() {
       <button onClick={clearGeoData}>Clear GeoJSON Data</button>
       <button onClick={initializeDrawControl}>Draw Line</button>
       <button onClick={toggleSelectionMode}>{selectionMode ? 'Exit Selection Mode' : 'Enter Selection Mode'}</button>
-      <button onClick={createPolygonFromSelectedLines} disabled={!selectionMode}>Create Polygon from Selected Lines</button>
+      <button onClick={createConnectingLines} disabled={!selectionMode}>Create Connecting Lines</button>
+      <button onClick={createPolygonFromLines}>Create Polygon from Lines</button>
       <div className="map-container">
         <MapContainer 
           style={{ height: "500px", width: "100%" }} 
