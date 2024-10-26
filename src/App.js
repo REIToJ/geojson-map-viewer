@@ -36,6 +36,16 @@ function App() {
       }
       const geoJsonLayer = L.geoJSON(data, {
         pointToLayer: () => null, // Отключаем загрузку маркеров для точек
+        style: (feature) => {
+          // Устанавливаем цвет для созданных и изначальных линий
+          if (feature.properties && feature.properties.tag === 'created-line') {
+            return { color: 'green' };
+          } else if (feature.properties && feature.properties.tag === 'connecting-line') {
+            return { color: 'green' };
+          } else {
+            return { color: '#3388ff' }; // Изначальные линии остаются синими
+          }
+        },
         onEachFeature: (feature, layer) => {
           if (feature.geometry.type === "LineString") {
             layer.on('click', () => {
@@ -89,6 +99,7 @@ function App() {
     map.on(L.Draw.Event.CREATED, (event) => {
       const layer = event.layer;
       const drawnFeature = layer.toGeoJSON();
+      drawnFeature.properties = { ...drawnFeature.properties, tag: 'created-line' }; // Помечаем созданную линию тегом
 
       // Добавляем новую линию в geoData
       setGeoData((prevGeoData) => ({
@@ -98,6 +109,7 @@ function App() {
 
       // Добавляем слой на карту и в geoJsonLayer
       if (geoJsonLayerRef.current) {
+        layer.setStyle({ color: 'green' }); // Выделяем созданные линии зеленым цветом
         geoJsonLayerRef.current.addLayer(layer);
         layer.on('click', () => {
           console.log('Drawn LineString layer:', layer.toGeoJSON());
@@ -129,6 +141,7 @@ function App() {
       // Храним уже соединенные точки, чтобы не создавать дубликаты соединений
       const connectedPoints = new Set();
       const map = geoJsonLayerRef.current._map;
+      const newConnectingLines = [];
 
       allFirstAndLastCoords.forEach((pointA, indexA) => {
         if (connectedPoints.has(indexA)) return;
@@ -151,10 +164,11 @@ function App() {
 
         if (closestPoint) {
           // Создаем новую линию между pointA и closestPoint
-          const newLine = turf.lineString([pointA, closestPoint]);
+          const newLine = turf.lineString([pointA, closestPoint], { tag: 'connecting-line' }); // Помечаем соединяющую линию тегом
+          newConnectingLines.push(newLine);
 
           // Добавляем новую линию на карту
-          const newLineLayer = L.geoJSON(newLine, { color: 'blue' }).addTo(map);
+          const newLineLayer = L.geoJSON(newLine, { style: { color: 'green' } }).addTo(map);
 
           // Добавляем новую линию в geoJsonLayer
           if (geoJsonLayerRef.current) {
@@ -166,22 +180,42 @@ function App() {
           connectedPoints.add(closestPointIndex);
         }
       });
+
+      // Обновляем состояние geoData, добавляя новые соединяющие линии
+      if (newConnectingLines.length > 0) {
+        setGeoData((prevGeoData) => ({
+          type: 'FeatureCollection',
+          features: [...prevGeoData.features, ...newConnectingLines],
+        }));
+      }
     }
+    selectedLinesRef.current = [];
   };
 
   const createPolygonFromLines = () => {
     if (geoJsonLayerRef.current) {
-      const features = geoJsonLayerRef.current.toGeoJSON();
-      const multiLineString = turf.featureCollection(features.features.filter(f => f.geometry.type === 'LineString'));
+      // Используем только выбранные линии для создания полигона
+      const selectedLineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
+      const multiLineString = turf.featureCollection(selectedLineFeatures);
 
       // Используем polygonize для создания полигонов из замкнутых линий
       const polygons = turf.polygonize(multiLineString);
 
+      // Снимаем выделение с выбранных линий после создания полигона
+      selectedLinesRef.current.forEach(layer => layer.setStyle({ color: '#3388ff' }));
+      selectedLinesRef.current = [];
+
       if (polygons && polygons.features.length > 0) {
         // Добавляем полигоны на карту
         const map = geoJsonLayerRef.current._map;
-        const polygonLayer = L.geoJSON(polygons, { color: 'green' }).addTo(map);
+        const polygonLayer = L.geoJSON(polygons, { style: { color: 'green', fillColor: 'green', fillOpacity: 0.5 } }).addTo(map);
         geoJsonLayerRef.current.addLayer(polygonLayer);
+
+        // Обновляем состояние geoData, добавляя новые полигоны
+        setGeoData((prevGeoData) => ({
+          type: 'FeatureCollection',
+          features: [...prevGeoData.features, ...polygons.features],
+        }));
       }
     }
   };
