@@ -127,7 +127,7 @@ function App() {
     selectedLinesRef.current = [];
   };
 
-  const createConnectingLines = () => {
+  const createConnectingLines = (fullCycle) => {
     if (selectedLinesRef.current.length > 1) {
       const lineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
       const allFirstAndLastCoords = [];
@@ -189,7 +189,12 @@ function App() {
         }));
       }
     }
-    selectedLinesRef.current = [];
+    if (fullCycle!==true){
+      console.log("Неполный цикл")
+      selectedLinesRef.current = [];
+    } else {
+      console.log("Полный цикл, сейчас в current:", selectedLinesRef.current)
+    }
   };
 
   const createPolygonFromLines = () => {
@@ -220,6 +225,18 @@ function App() {
     }
   };
 
+  const createLinesAndPolygon = () => {
+    // Сначала создаем соединяющие линии
+    createConnectingLines(true);
+    // Затем создаем полигон из выделенных и созданных линий
+    createPolygonFromLines();
+    // Удаляем линии, созданные на этапе соединения
+    setGeoData((prevGeoData) => ({
+      type: 'FeatureCollection',
+      features: prevGeoData.features.filter(feature => feature.properties && feature.properties.tag !== 'connecting-line'),
+    }));
+  };
+
   return (
     <div className="App">
       <h2>GeoJSON Map Viewer</h2>
@@ -229,6 +246,7 @@ function App() {
       <button onClick={toggleSelectionMode}>{selectionMode ? 'Exit Selection Mode' : 'Enter Selection Mode'}</button>
       <button onClick={createConnectingLines} disabled={!selectionMode}>Create Connecting Lines</button>
       <button onClick={createPolygonFromLines}>Create Polygon from Lines</button>
+      <button onClick={createLinesAndPolygon} disabled={!selectionMode}>Create Lines and Polygon</button>
       <div className="map-container">
         <MapContainer 
           style={{ height: "500px", width: "100%" }} 
