@@ -127,7 +127,7 @@ function App() {
     selectedLinesRef.current = [];
   };
 
-  const createConnectingLines = (fullCycle) => {
+  const createConnectingLines = (fullCycle = false) => {
     if (selectedLinesRef.current.length > 1) {
       const lineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
       const allFirstAndLastCoords = [];
@@ -188,20 +188,26 @@ function App() {
           features: [...prevGeoData.features, ...newConnectingLines],
         }));
       }
+
+      if (fullCycle == true) {
+        return newConnectingLines;
+      }
+      else {
+        selectedLinesRef.current = [];
+      }
     }
-    if (fullCycle!==true){
-      console.log("Неполный цикл")
-      selectedLinesRef.current = [];
-    } else {
-      console.log("Полный цикл, сейчас в current:", selectedLinesRef.current)
-    }
+    return [];
   };
 
-  const createPolygonFromLines = () => {
+  const createPolygonFromLines = (lines = []) => {
     if (geoJsonLayerRef.current) {
-      // Используем только выбранные линии для создания полигона
+      if (!Array.isArray(lines)) {
+        lines = [];
+      }
+      // Используем только выбранные линии и переданные соединяющие линии для создания полигона
       const selectedLineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
-      const multiLineString = turf.featureCollection(selectedLineFeatures);
+      const allLines = [...selectedLineFeatures, ...(lines || [])];
+      const multiLineString = turf.featureCollection(allLines);
 
       // Используем polygonize для создания полигонов из замкнутых линий
       const polygons = turf.polygonize(multiLineString);
@@ -226,10 +232,10 @@ function App() {
   };
 
   const createLinesAndPolygon = () => {
-    // Сначала создаем соединяющие линии
-    createConnectingLines(true);
+    // Сначала создаем соединяющие линии и получаем их
+    const connectingLines = createConnectingLines(true);
     // Затем создаем полигон из выделенных и созданных линий
-    createPolygonFromLines();
+    createPolygonFromLines(connectingLines);
     // Удаляем линии, созданные на этапе соединения
     setGeoData((prevGeoData) => ({
       type: 'FeatureCollection',
@@ -245,7 +251,7 @@ function App() {
       <button onClick={initializeDrawControl}>Draw Line</button>
       <button onClick={toggleSelectionMode}>{selectionMode ? 'Exit Selection Mode' : 'Enter Selection Mode'}</button>
       <button onClick={createConnectingLines} disabled={!selectionMode}>Create Connecting Lines</button>
-      <button onClick={createPolygonFromLines}>Create Polygon from Lines</button>
+      <button onClick={createPolygonFromLines} disabled={!selectionMode}>Create Polygon from Lines</button>
       <button onClick={createLinesAndPolygon} disabled={!selectionMode}>Create Lines and Polygon</button>
       <div className="map-container">
         <MapContainer 
