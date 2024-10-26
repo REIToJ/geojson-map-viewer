@@ -219,7 +219,14 @@ function App() {
       if (polygons && polygons.features.length > 0) {
         // Добавляем полигоны на карту
         const map = geoJsonLayerRef.current._map;
-        const polygonLayer = L.geoJSON(polygons, { style: { color: 'green', fillColor: 'green', fillOpacity: 0.5 } }).addTo(map);
+        const polygonLayer = L.geoJSON(polygons, {
+          style: { color: 'green', fillColor: 'green', fillOpacity: 0.5 },
+          onEachFeature: (feature, layer) => {
+            layer.on('click', () => {
+              console.log('Polygon feature:', feature);
+            });
+          }
+        }).addTo(map);
         geoJsonLayerRef.current.addLayer(polygonLayer);
 
         // Обновляем состояние geoData, добавляя новые полигоны
@@ -243,6 +250,33 @@ function App() {
     }));
   };
 
+  const enableEditing = () => {
+    const map = geoJsonLayerRef.current._map;
+    if (geoJsonLayerRef.current) {
+      const editableLayer = geoJsonLayerRef.current;
+      const editControl = new L.Control.Draw({
+        edit: {
+          featureGroup: editableLayer,
+          remove: false
+        },
+        draw: false,
+      });
+      map.addControl(editControl);
+      map.on(L.Draw.Event.EDITED, (event) => {
+        const layers = event.layers;
+        layers.eachLayer((layer) => {
+          const updatedFeature = layer.toGeoJSON();
+          setGeoData((prevGeoData) => {
+            const updatedFeatures = prevGeoData.features.map(feature =>
+              feature.id === updatedFeature.id ? updatedFeature : feature
+            );
+            return { type: 'FeatureCollection', features: updatedFeatures };
+          });
+        });
+      });
+    }
+  };
+
   return (
     <div className="App">
       <h2>GeoJSON Map Viewer</h2>
@@ -253,6 +287,7 @@ function App() {
       <button onClick={createConnectingLines} disabled={!selectionMode}>Create Connecting Lines</button>
       <button onClick={createPolygonFromLines} disabled={!selectionMode}>Create Polygon from Lines</button>
       <button onClick={createLinesAndPolygon} disabled={!selectionMode}>Create Lines and Polygon</button>
+      <button onClick={enableEditing}>Enable Editing</button>
       <div className="map-container">
         <MapContainer 
           style={{ height: "500px", width: "100%" }} 
