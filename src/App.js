@@ -11,6 +11,7 @@ import { toWgs84 } from '@turf/projection';
 import './App.css';
 
 function App() {
+  // Состояние для хранения данных GeoJSON и режима выбора
   const [geoData, setGeoData] = useState({ type: 'FeatureCollection', features: [] });
   const [selectionMode, setSelectionMode] = useState(false);
   const [parserMode, setParserMode] = useState(false);
@@ -18,6 +19,7 @@ function App() {
   const drawControlRef = useRef(null);
   const selectedLinesRef = useRef([]);
 
+  // Обработчик загрузки файла OSM
   const handleFileUploadOSM = (event) => {
     const file = event.target.files[0];
     const reader = new FileReader();
@@ -33,6 +35,7 @@ function App() {
     }
   };
 
+  // Обработчик загрузки файла, конвертирующий данные в WGS84
   const handleFileUploadParser = (event) => {
     const file = event.target.files[0];
     const reader = new FileReader();
@@ -49,6 +52,7 @@ function App() {
     }
   };
 
+  // Функция для конвертации координат в систему WGS84
   const convertToWgs84 = (geojson) => {
     try {
       return toWgs84(geojson);
@@ -58,6 +62,7 @@ function App() {
     }
   };
 
+  // Компонент GeoJSON, который обновляет и отображает данные на карте
   const GeoJSONWithBounds = ({ data }) => {
     const map = useMap();
     React.useEffect(() => {
@@ -65,26 +70,29 @@ function App() {
         geoJsonLayerRef.current.clearLayers();
       }
       const geoJsonLayer = L.geoJSON(data, {
-        pointToLayer: () => null, // Отключаем загрузку маркеров для точек
+        // Отключаем загрузку маркеров для точек
+        pointToLayer: () => null,
+        // Устанавливаем стили для исходных и созданных линий
         style: (feature) => {
-          // Устанавливаем цвет для созданных и изначальных линий
           if (feature.properties && feature.properties.tag === 'created-line') {
             return { color: 'green' };
           } else if (feature.properties && feature.properties.tag === 'connecting-line') {
             return { color: 'green' };
           } else {
-            return { color: '#3388ff' }; // Изначальные линии остаются синими
+            return { color: '#3388ff' };
           }
         },
+        // Обработка кликов по каждой геометрической сущности
         onEachFeature: (feature, layer) => {
           if (feature.geometry.type === "LineString") {
             layer.on('click', () => {
               if (selectionMode) {
+                // Выделяем или снимаем выделение с линии в режиме выбора
                 if (selectedLinesRef.current.includes(layer)) {
-                  layer.setStyle({ color: '#3388ff' }); // Снимаем выделение
+                  layer.setStyle({ color: '#3388ff' });
                   selectedLinesRef.current = selectedLinesRef.current.filter(l => l !== layer);
                 } else {
-                  layer.setStyle({ color: 'red' }); // Выделяем линию
+                  layer.setStyle({ color: 'red' });
                   selectedLinesRef.current.push(layer);
                 }
               } else {
@@ -104,10 +112,12 @@ function App() {
     return null;
   };
 
+  // Очистка всех данных GeoJSON
   const clearGeoData = () => {
     setGeoData({ type: 'FeatureCollection', features: [] });
   };
 
+  // Инициализация инструментов рисования линий
   const initializeDrawControl = () => {
     const map = geoJsonLayerRef.current._map;
     if (!drawControlRef.current) {
@@ -129,17 +139,17 @@ function App() {
     map.on(L.Draw.Event.CREATED, (event) => {
       const layer = event.layer;
       const drawnFeature = layer.toGeoJSON();
-      drawnFeature.properties = { ...drawnFeature.properties, tag: 'created-line' }; // Помечаем созданную линию тегом
+      drawnFeature.properties = { ...drawnFeature.properties, tag: 'created-line' }; // Добавляем тег для созданной линии
 
-      // Добавляем новую линию в geoData
+      // Добавляем новую линию в данные GeoJSON
       setGeoData((prevGeoData) => ({
         type: 'FeatureCollection',
         features: [...prevGeoData.features, drawnFeature],
       }));
 
-      // Добавляем слой на карту и в geoJsonLayer
+      // Добавляем слой на карту и сохраняем его в geoJsonLayer
       if (geoJsonLayerRef.current) {
-        layer.setStyle({ color: 'green' }); // Выделяем созданные линии зеленым цветом
+        layer.setStyle({ color: 'green' }); // Помечаем созданную линию зеленым цветом
         geoJsonLayerRef.current.addLayer(layer);
         layer.on('click', () => {
           console.log('Drawn LineString layer:', layer.toGeoJSON());
@@ -151,12 +161,14 @@ function App() {
     });
   };
 
+  // Переключение режима выбора объектов на карте
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
-    selectedLinesRef.current.forEach(layer => layer.setStyle({ color: '#3388ff' })); // Снимаем выделение с линий
+    selectedLinesRef.current.forEach(layer => layer.setStyle({ color: '#3388ff' })); // Сбрасываем выделение всех линий
     selectedLinesRef.current = [];
   };
 
+  // Создание соединительных линий между концами выбранных линий
   const createConnectingLines = (fullCycle = false) => {
     if (selectedLinesRef.current.length > 1) {
       const lineFeatures = selectedLinesRef.current.map(layer => layer.toGeoJSON());
@@ -168,7 +180,7 @@ function App() {
         allFirstAndLastCoords.push(line.geometry.coordinates[line.geometry.coordinates.length - 1]);
       });
 
-      // Храним уже соединенные точки, чтобы не создавать дубликаты соединений
+      // Храним уже соединенные точки, чтобы избежать дублирования
       const connectedPoints = new Set();
       const map = geoJsonLayerRef.current._map;
       const newConnectingLines = [];
@@ -194,7 +206,7 @@ function App() {
 
         if (closestPoint) {
           // Создаем новую линию между pointA и closestPoint
-          const newLine = turf.lineString([pointA, closestPoint], { tag: 'connecting-line' }); // Помечаем соединяющую линию тегом
+          const newLine = turf.lineString([pointA, closestPoint], { tag: 'connecting-line' }); // Помечаем линию как соединяющую
           newConnectingLines.push(newLine);
 
           // Добавляем новую линию на карту
@@ -211,7 +223,7 @@ function App() {
         }
       });
 
-      // Обновляем состояние geoData, добавляя новые соединяющие линии
+      // Обновляем geoData, добавляя новые соединяющие линии
       if (newConnectingLines.length > 0) {
         setGeoData((prevGeoData) => ({
           type: 'FeatureCollection',
@@ -221,14 +233,14 @@ function App() {
 
       if (fullCycle == true) {
         return newConnectingLines;
-      }
-      else {
+      } else {
         selectedLinesRef.current = [];
       }
     }
     return [];
   };
 
+  // Создание полигона из выбранных и соединенных линий
   const createPolygonFromLines = (lines = []) => {
     if (geoJsonLayerRef.current) {
       if (!Array.isArray(lines)) {
@@ -259,7 +271,7 @@ function App() {
         }).addTo(map);
         geoJsonLayerRef.current.addLayer(polygonLayer);
 
-        // Обновляем состояние geoData, добавляя новые полигоны
+        // Обновляем geoData, добавляя новые полигоны
         setGeoData((prevGeoData) => ({
           type: 'FeatureCollection',
           features: [...prevGeoData.features, ...polygons.features],
@@ -268,6 +280,7 @@ function App() {
     }
   };
 
+  // Создание линий и полигона из выделенных объектов
   const createLinesAndPolygon = () => {
     // Сначала создаем соединяющие линии и получаем их
     const connectingLines = createConnectingLines(true);
@@ -280,6 +293,7 @@ function App() {
     }));
   };
 
+  // Включение режима редактирования для объектов на карте
   const enableEditing = () => {
     const map = geoJsonLayerRef.current._map;
     if (geoJsonLayerRef.current) {
@@ -307,6 +321,7 @@ function App() {
     }
   };
 
+  // Разбиение выбранной линии на сегменты заданного размера
   const chunkSelectedLineString = (degree) => {
     if (selectedLinesRef.current.length !== 1) {
       alert('Please select a single LineString to chunk.');
@@ -327,6 +342,7 @@ function App() {
     selectedLinesRef.current = [];
   };
 
+  // Упрощение выбранной линии для уменьшения количества точек
   const simplifySelectedLine = () => {
     if (selectedLinesRef.current.length !== 1) {
       alert('Please select a single LineString to simplify.');
@@ -340,21 +356,35 @@ function App() {
     }
 
     const points = selectedLine.geometry.coordinates.map(([x, y]) => ({ x, y }));
-    const simplifiedPoints = simplify(points, 0.0001, true); // tolerance value and highQuality flag
+    const simplifiedPoints = simplify(points, 0.001, true); // tolerance value and highQuality flag
     const simplifiedCoordinates = simplifiedPoints.map(({ x, y }) => [x, y]);
 
-    // Remove the old line
+    // Удаляем старую линию
     geoJsonLayerRef.current.removeLayer(selectedLinesRef.current[0]);
     selectedLinesRef.current = [];
 
-    // Create new simplified line and add it to the map and geoJsonLayer
-    const newLine = turf.lineString(simplifiedCoordinates, { tag: 'simplified-line' });
-    const newLineLayer = L.geoJSON(newLine, { style: { color: 'blue' } }).addTo(geoJsonLayerRef.current._map);
-    geoJsonLayerRef.current.addLayer(newLineLayer);
+    // Создаем новые линии для каждого сегмента между упрощенными точками
+    const newLines = [];
+    for (let i = 0; i < simplifiedCoordinates.length - 1; i++) {
+      const segment = [simplifiedCoordinates[i], simplifiedCoordinates[i + 1]];
+      const newLine = turf.lineString(segment, { tag: 'simplified-segment' });
+      newLines.push(newLine);
+    }
 
+    // Добавляем новые линии на карту и в geoJsonLayer
+    const map = geoJsonLayerRef.current._map;
+    newLines.forEach(newLine => {
+      const newLineLayer = L.geoJSON(newLine, { style: { color: 'blue' } }).addTo(map);
+      geoJsonLayerRef.current.addLayer(newLineLayer);
+    });
+
+    // Обновляем geoData новыми линиями
     setGeoData((prevGeoData) => ({
       type: 'FeatureCollection',
-      features: [...prevGeoData.features.filter(feature => feature !== selectedLine), newLine],
+      features: [
+        ...prevGeoData.features.filter(feature => feature !== selectedLine),
+        ...newLines,
+      ],
     }));
   };
 
