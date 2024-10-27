@@ -359,15 +359,19 @@ function App() {
     const simplifiedPoints = simplify(points, 0.001, true); // tolerance value and highQuality flag
     const simplifiedCoordinates = simplifiedPoints.map(({ x, y }) => [x, y]);
 
-    // Удаляем старую линию
+    // Удаляем старую линию как из geoJsonLayer, так и из geoData
     geoJsonLayerRef.current.removeLayer(selectedLinesRef.current[0]);
+    setGeoData((prevGeoData) => ({
+      type: 'FeatureCollection',
+      features: prevGeoData.features.filter(feature => feature.properties && feature.properties.id !== selectedLine.properties.id),
+    }));
     selectedLinesRef.current = [];
 
     // Создаем новые линии для каждого сегмента между упрощенными точками
     const newLines = [];
     for (let i = 0; i < simplifiedCoordinates.length - 1; i++) {
       const segment = [simplifiedCoordinates[i], simplifiedCoordinates[i + 1]];
-      const newLine = turf.lineString(segment, { tag: 'simplified-segment' });
+      const newLine = turf.lineString(segment, { tag: 'simplified-segment', id: selectedLine.properties.id });
       newLines.push(newLine);
     }
 
@@ -382,7 +386,7 @@ function App() {
     setGeoData((prevGeoData) => ({
       type: 'FeatureCollection',
       features: [
-        ...prevGeoData.features.filter(feature => feature !== selectedLine),
+        ...prevGeoData.features,
         ...newLines,
       ],
     }));
