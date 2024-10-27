@@ -6,6 +6,7 @@ import L from 'leaflet';
 import 'leaflet-draw';
 import * as turf from '@turf/turf';
 import proj4 from 'proj4';
+import simplify from 'simplify-js';
 import { toWgs84 } from '@turf/projection';
 import './App.css';
 
@@ -306,6 +307,57 @@ function App() {
     }
   };
 
+  const chunkSelectedLineString = (degree) => {
+    if (selectedLinesRef.current.length !== 1) {
+      alert('Please select a single LineString to chunk.');
+      return;
+    }
+
+    const selectedLine = selectedLinesRef.current[0].toGeoJSON();
+    if (selectedLine.geometry.type !== 'LineString') {
+      alert('Selected feature is not a LineString.');
+      return;
+    }
+
+    const chunked = turf.lineChunk(selectedLine, degree, { units: 'degrees' });
+    setGeoData((prevGeoData) => ({
+      type: 'FeatureCollection',
+      features: [...prevGeoData.features, ...chunked.features],
+    }));
+    selectedLinesRef.current = [];
+  };
+
+  const simplifySelectedLine = () => {
+    if (selectedLinesRef.current.length !== 1) {
+      alert('Please select a single LineString to simplify.');
+      return;
+    }
+
+    const selectedLine = selectedLinesRef.current[0].toGeoJSON();
+    if (selectedLine.geometry.type !== 'LineString') {
+      alert('Selected feature is not a LineString.');
+      return;
+    }
+
+    const points = selectedLine.geometry.coordinates.map(([x, y]) => ({ x, y }));
+    const simplifiedPoints = simplify(points, 0.0001, true); // tolerance value and highQuality flag
+    const simplifiedCoordinates = simplifiedPoints.map(({ x, y }) => [x, y]);
+
+    // Remove the old line
+    geoJsonLayerRef.current.removeLayer(selectedLinesRef.current[0]);
+    selectedLinesRef.current = [];
+
+    // Create new simplified line and add it to the map and geoJsonLayer
+    const newLine = turf.lineString(simplifiedCoordinates, { tag: 'simplified-line' });
+    const newLineLayer = L.geoJSON(newLine, { style: { color: 'blue' } }).addTo(geoJsonLayerRef.current._map);
+    geoJsonLayerRef.current.addLayer(newLineLayer);
+
+    setGeoData((prevGeoData) => ({
+      type: 'FeatureCollection',
+      features: [...prevGeoData.features.filter(feature => feature !== selectedLine), newLine],
+    }));
+  };
+
   return (
     <div className="App">
       <h2>GeoJSON Map Viewer</h2>
@@ -316,6 +368,8 @@ function App() {
       <button onClick={createConnectingLines} disabled={!selectionMode}>Create Connecting Lines</button>
       <button onClick={createPolygonFromLines} disabled={!selectionMode}>Create Polygon from Lines</button>
       <button onClick={createLinesAndPolygon} disabled={!selectionMode}>Create Lines and Polygon</button>
+      <button onClick={() => chunkSelectedLineString(0.03)}>Chunk Selected LineString</button>
+      <button onClick={simplifySelectedLine}>Simplify Selected LineString</button>
       <button onClick={enableEditing}>Enable Editing</button>
       <h2>Load from Parser</h2>
       <input type="file" accept=".geojson" onChange={handleFileUploadParser} />
