@@ -356,7 +356,7 @@ function App() {
       return;
     }
 
-    const chunked = turf.lineChunk(selectedLine, degree, { units: 'degrees' });
+    const chunked = turf.lineChunk(selectedLine, degree, { units: 'radians' });
     setGeoData((prevGeoData) => ({
       type: 'FeatureCollection',
       features: [...prevGeoData.features, ...chunked.features],
@@ -424,7 +424,7 @@ function App() {
       <button onClick={createConnectingLines} disabled={!selectionMode}>Create Connecting Lines</button>
       <button onClick={createPolygonFromLines} disabled={!selectionMode}>Create Polygon from Lines</button>
       <button onClick={createLinesAndPolygon} disabled={!selectionMode}>Create Lines and Polygon</button>
-      <button onClick={() => chunkSelectedLineString(0.03)}>Chunk Selected LineString</button>
+      <button onClick={() => chunkSelectedLineString(0.00005)}>Chunk Selected LineString</button>
       <button onClick={simplifySelectedLine}>Simplify Selected LineString</button>
       <button onClick={enableEditing}>Enable Editing</button>
       <h2>Load from Parser</h2>
