@@ -45,3 +45,10 @@
   stroke: #ff7800;
   cursor: pointer;
 }
+
+.leaflet-control-container .leaflet-top.leaflet-left {
+  top: 80px;
+}
+.leaflet-control-attribution .leaflet-control{
+ visibility: hidden;
+}

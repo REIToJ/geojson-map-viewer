@@ -9,18 +9,38 @@ import proj4 from 'proj4';
 import simplify from 'simplify-js';
 import { toWgs84 } from '@turf/projection';
 import './App.css';
+import { AppBar, Toolbar, IconButton, Menu, MenuItem, Tooltip } from '@mui/material';
+import FileUploadIcon from '@mui/icons-material/UploadFile';
+import ClearIcon from '@mui/icons-material/Clear';
+import PolylineIcon from '@mui/icons-material/Timeline';
+import SelectAllIcon from '@mui/icons-material/SelectAll';
+import AddIcon from '@mui/icons-material/Add';
+import CreateIcon from '@mui/icons-material/Create';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 
 function App() {
   // Состояние для хранения данных GeoJSON и режима выбора
   const [geoData, setGeoData] = useState({ type: 'FeatureCollection', features: [] });
   const [selectionMode, setSelectionMode] = useState(false);
   const [parserMode, setParserMode] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
   const geoJsonLayerRef = useRef(null);
   const drawControlRef = useRef(null);
   const selectedLinesRef = useRef([]);
+  const [fileUploadAnchorEl, setFileUploadAnchorEl] = useState(null);
+  const [shouldFitBounds, setShouldFitBounds] = useState(false);
 
-  // Обработчик загрузки файла OSM
-  const handleFileUploadOSM = (event) => {
+
+  const handleFileUploadMenuOpen = (event) => {
+    setFileUploadAnchorEl(event.currentTarget);
+  };
+
+  const handleFileUploadMenuClose = () => {
+    setFileUploadAnchorEl(null);
+  };
+
+  // Обработчик загрузки файла
+  const handleFileUpload = (event) => {
     const file = event.target.files[0];
     const reader = new FileReader();
 
@@ -29,6 +49,7 @@ function App() {
       data = removeDuplicateLines(data); // Удаляем дублирующиеся линии перед обновлением состояния
       setGeoData(data);
       setParserMode(false);
+      setShouldFitBounds(true);
     };
 
     if (file) {
@@ -67,6 +88,8 @@ function App() {
       data = removeDuplicateLines(data); // Удаляем дублирующиеся линии перед обновлением состояния
       setGeoData(data);
       setParserMode(true);
+      setShouldFitBounds(true); // Указываем, что нужно оцентровать карту
+
     };
 
     if (file) {
@@ -84,8 +107,18 @@ function App() {
     }
   };
 
+  // Обработчик открытия меню Debug
+  const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  // Обработчик закрытия меню Debug
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
   // Компонент GeoJSON, который обновляет и отображает данные на карте
-  const GeoJSONWithBounds = ({ data }) => {
+  const GeoJSONWithBounds = ({ data, shouldFitBounds, setShouldFitBounds }) => {
     const map = useMap();
     React.useEffect(() => {
       if (geoJsonLayerRef.current) {
@@ -126,10 +159,12 @@ function App() {
       });
       geoJsonLayerRef.current = geoJsonLayer;
       geoJsonLayer.addTo(map);
-      if (data.features.length > 0) {
+      if (data.features.length > 0 && shouldFitBounds) {
         map.fitBounds(geoJsonLayer.getBounds());
+        setShouldFitBounds(false); // Сбрасываем флаг после оцентровки
+
       }
-    }, [data, map]);
+    }, [data, map, shouldFitBounds, setShouldFitBounds]);
 
     return null;
   };
@@ -182,7 +217,6 @@ function App() {
       }
     });
   };
-
   // Переключение режима выбора объектов на карте
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
@@ -413,36 +447,99 @@ function App() {
       ],
     }));
   };
-
+  // Основной интерфейс
   return (
     <div className="App">
-      <h2>GeoJSON Map Viewer</h2>
-      <input type="file" accept=".geojson" onChange={handleFileUploadOSM} />
-      <button onClick={clearGeoData}>Clear GeoJSON Data</button>
-      <button onClick={initializeDrawControl}>Draw Line</button>
-      <button onClick={toggleSelectionMode}>{selectionMode ? 'Exit Selection Mode' : 'Enter Selection Mode'}</button>
-      <button onClick={createConnectingLines} disabled={!selectionMode}>Create Connecting Lines</button>
-      <button onClick={createPolygonFromLines} disabled={!selectionMode}>Create Polygon from Lines</button>
-      <button onClick={createLinesAndPolygon} disabled={!selectionMode}>Create Lines and Polygon</button>
-      <button onClick={() => chunkSelectedLineString(0.00005)}>Chunk Selected LineString</button>
-      <button onClick={simplifySelectedLine}>Simplify Selected LineString</button>
-      <button onClick={enableEditing}>Enable Editing</button>
-      <h2>Load from Parser</h2>
-      <input type="file" accept=".geojson" onChange={handleFileUploadParser} />
-      <div className="map-container">
-        <MapContainer 
-          style={{ height: "500px", width: "100%" }} 
-          center={[51.505, -0.09]} 
-          zoom={13} 
-          scrollWheelZoom={false}
+      <MapContainer 
+        style={{ height: "100vh", width: "100vw" }} 
+        center={[51.505, -0.09]} 
+        zoom={13} 
+        scrollWheelZoom={true}
+      >
+        {!parserMode && <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        />}
+        {geoData && 
+        <GeoJSONWithBounds data={geoData} 
+        shouldFitBounds={shouldFitBounds}
+        setShouldFitBounds={setShouldFitBounds}
+
+        />}
+      </MapContainer>
+      <AppBar position="fixed" color="primary" sx={{ opacity: 0.9 }}>
+        <Toolbar>
+        <Tooltip title="Upload GeoJSON File">
+          <IconButton onClick={handleFileUploadMenuOpen}>
+            <FileUploadIcon />
+          </IconButton>
+        </Tooltip>
+        <Menu
+          anchorEl={fileUploadAnchorEl}
+          open={Boolean(fileUploadAnchorEl)}
+          onClose={handleFileUploadMenuClose}
         >
-          {!parserMode && <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          />}
-          {geoData && <GeoJSONWithBounds data={geoData} />}
-        </MapContainer>
-      </div>
+          <MenuItem component="label">
+            Upload from OSM
+            <input type="file" accept=".geojson" onChange={handleFileUpload} hidden />
+          </MenuItem>
+          <MenuItem component="label">
+            Upload from Parser
+            <input type="file" accept=".geojson" onChange={handleFileUploadParser} hidden />
+          </MenuItem>
+        </Menu>
+          <Tooltip title="Draw Line">
+            <IconButton onClick={initializeDrawControl}>
+              <PolylineIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Create Lines and Polygon">
+            <IconButton onClick={() => { createLinesAndPolygon()}}>
+              <PolylineIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Enable Editing">
+            <IconButton onClick={() => enableEditing()}>
+              <CreateIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={selectionMode ? "Exit Selection Mode" : "Enter Selection Mode"}>
+            <IconButton onClick={() => toggleSelectionMode()}>
+              <SelectAllIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Simplify Selected LineString">
+            <IconButton onClick={simplifySelectedLine}>
+              <AddIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Chunk Selected LineString">
+            <IconButton onClick={() => { chunkSelectedLineString(0.03)}}>
+              <PolylineIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Debug Options">
+            <IconButton onClick={handleMenuOpen}>
+              <MoreVertIcon />
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleMenuClose}
+          >
+            <MenuItem onClick={() => { clearGeoData(); handleMenuClose(); }}>
+              <ClearIcon /> Clear GeoJSON Data
+            </MenuItem>
+            <MenuItem onClick={() => { createConnectingLines(); handleMenuClose(); }}>
+              <AddIcon /> Create Connecting Lines
+            </MenuItem>
+            <MenuItem onClick={() => { createPolygonFromLines(); handleMenuClose(); }}>
+              <AddIcon /> Create Polygon from Lines
+            </MenuItem>
+          </Menu>
+        </Toolbar>
+      </AppBar>
     </div>
   );
 }
