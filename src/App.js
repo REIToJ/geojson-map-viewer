@@ -12,11 +12,27 @@ import './App.css';
 function App() {
   const [geoData, setGeoData] = useState({ type: 'FeatureCollection', features: [] });
   const [selectionMode, setSelectionMode] = useState(false);
+  const [parserMode, setParserMode] = useState(false);
   const geoJsonLayerRef = useRef(null);
   const drawControlRef = useRef(null);
   const selectedLinesRef = useRef([]);
 
-  const handleFileUpload = (event) => {
+  const handleFileUploadOSM = (event) => {
+    const file = event.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      let data = JSON.parse(e.target.result);
+      setGeoData(data);
+      setParserMode(false);
+    };
+
+    if (file) {
+      reader.readAsText(file);
+    }
+  };
+
+  const handleFileUploadParser = (event) => {
     const file = event.target.files[0];
     const reader = new FileReader();
 
@@ -24,6 +40,7 @@ function App() {
       let data = JSON.parse(e.target.result);
       data = convertToWgs84(data);
       setGeoData(data);
+      setParserMode(true);
     };
 
     if (file) {
@@ -292,7 +309,7 @@ function App() {
   return (
     <div className="App">
       <h2>GeoJSON Map Viewer</h2>
-      <input type="file" accept=".geojson" onChange={handleFileUpload} />
+      <input type="file" accept=".geojson" onChange={handleFileUploadOSM} />
       <button onClick={clearGeoData}>Clear GeoJSON Data</button>
       <button onClick={initializeDrawControl}>Draw Line</button>
       <button onClick={toggleSelectionMode}>{selectionMode ? 'Exit Selection Mode' : 'Enter Selection Mode'}</button>
@@ -300,6 +317,8 @@ function App() {
       <button onClick={createPolygonFromLines} disabled={!selectionMode}>Create Polygon from Lines</button>
       <button onClick={createLinesAndPolygon} disabled={!selectionMode}>Create Lines and Polygon</button>
       <button onClick={enableEditing}>Enable Editing</button>
+      <h2>Load from Parser</h2>
+      <input type="file" accept=".geojson" onChange={handleFileUploadParser} />
       <div className="map-container">
         <MapContainer 
           style={{ height: "500px", width: "100%" }} 
@@ -307,10 +326,10 @@ function App() {
           zoom={13} 
           scrollWheelZoom={false}
         >
-          <TileLayer
+          {!parserMode && <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          />
+          />}
           {geoData && <GeoJSONWithBounds data={geoData} />}
         </MapContainer>
       </div>
