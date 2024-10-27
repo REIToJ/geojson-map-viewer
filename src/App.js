@@ -17,6 +17,8 @@ import SelectAllIcon from '@mui/icons-material/SelectAll';
 import AddIcon from '@mui/icons-material/Add';
 import CreateIcon from '@mui/icons-material/Create';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import ContentCutIcon from '@mui/icons-material/ContentCut';
+import CompressIcon from '@mui/icons-material/Compress';
 
 function App() {
   // Состояние для хранения данных GeoJSON и режима выбора
@@ -55,6 +57,88 @@ function App() {
     if (file) {
       reader.readAsText(file);
     }
+  };
+
+  const MapControls = ({ setGeoData, geoJsonLayerRef }) => {
+    const map = useMap();
+  
+    React.useEffect(() => {
+      // Проверяем, были ли уже добавлены контролы
+      if (map._controlsAdded) return;
+      map._controlsAdded = true;
+  
+      // Создаем группу слоев для нарисованных объектов
+      const drawnItems = geoJsonLayerRef.current || new L.FeatureGroup();
+      if (!geoJsonLayerRef.current) {
+        geoJsonLayerRef.current = drawnItems;
+        map.addLayer(drawnItems);
+      }
+  
+      // Добавляем контролы рисования и редактирования
+      const drawControl = new L.Control.Draw({
+        edit: {
+          featureGroup: drawnItems,
+          remove: false,
+        },
+        draw: {
+          polyline: true,
+          polygon: false,
+          circle: false,
+          marker: false,
+          rectangle: false,
+          circlemarker: false,
+        },
+      });
+      map.addControl(drawControl);
+  
+      // Обработчики событий
+      const onDrawCreated = (event) => {
+        const layer = event.layer;
+        const drawnFeature = layer.toGeoJSON();
+        drawnFeature.properties = { ...drawnFeature.properties, tag: 'created-line' };
+  
+        setGeoData((prevGeoData) => ({
+          type: 'FeatureCollection',
+          features: [...prevGeoData.features, drawnFeature],
+        }));
+  
+        drawnItems.addLayer(layer);
+      };
+  
+      const onDrawEdited = (event) => {
+        const layers = event.layers;
+        const updatedFeatures = [];
+  
+        layers.eachLayer((layer) => {
+          const updatedFeature = layer.toGeoJSON();
+          updatedFeatures.push(updatedFeature);
+        });
+  
+        setGeoData((prevGeoData) => {
+          const features = prevGeoData.features.map((feature) => {
+            const updatedFeature = updatedFeatures.find(
+              (uf) => uf.id === feature.id
+            );
+            return updatedFeature || feature;
+          });
+          return { type: 'FeatureCollection', features };
+        });
+      };
+  
+      map.on(L.Draw.Event.CREATED, onDrawCreated);
+      map.on(L.Draw.Event.EDITED, onDrawEdited);
+  
+      // Функция очистки
+      return () => {
+        map.off(L.Draw.Event.CREATED, onDrawCreated);
+        map.off(L.Draw.Event.EDITED, onDrawEdited);
+        map.removeControl(drawControl);
+        map.removeLayer(drawnItems);
+        delete map._controlsAdded;
+      };
+    }, []); // Пустой массив зависимостей, эффект выполнится только один раз при монтировании
+  
+    return null;
   };
 
   // Функция для удаления дублирующихся линий из GeoJSON
@@ -174,49 +258,6 @@ function App() {
     setGeoData({ type: 'FeatureCollection', features: [] });
   };
 
-  // Инициализация инструментов рисования линий
-  const initializeDrawControl = () => {
-    const map = geoJsonLayerRef.current._map;
-    if (!drawControlRef.current) {
-      drawControlRef.current = new L.Control.Draw({
-        edit: {
-          featureGroup: geoJsonLayerRef.current || new L.FeatureGroup().addTo(map),
-        },
-        draw: {
-          polyline: true,
-          polygon: false,
-          circle: false,
-          marker: false,
-          rectangle: false,
-        },
-      });
-      map.addControl(drawControlRef.current);
-    }
-
-    map.on(L.Draw.Event.CREATED, (event) => {
-      const layer = event.layer;
-      const drawnFeature = layer.toGeoJSON();
-      drawnFeature.properties = { ...drawnFeature.properties, tag: 'created-line' }; // Добавляем тег для созданной линии
-
-      // Добавляем новую линию в данные GeoJSON
-      setGeoData((prevGeoData) => ({
-        type: 'FeatureCollection',
-        features: [...prevGeoData.features, drawnFeature],
-      }));
-
-      // Добавляем слой на карту и сохраняем его в geoJsonLayer
-      if (geoJsonLayerRef.current) {
-        layer.setStyle({ color: 'green' }); // Помечаем созданную линию зеленым цветом
-        geoJsonLayerRef.current.addLayer(layer);
-        layer.on('click', () => {
-          console.log('Drawn LineString layer:', layer.toGeoJSON());
-        });
-      } else {
-        geoJsonLayerRef.current = new L.FeatureGroup().addTo(map);
-        geoJsonLayerRef.current.addLayer(layer);
-      }
-    });
-  };
   // Переключение режима выбора объектов на карте
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
@@ -349,34 +390,6 @@ function App() {
     }));
   };
 
-  // Включение режима редактирования для объектов на карте
-  const enableEditing = () => {
-    const map = geoJsonLayerRef.current._map;
-    if (geoJsonLayerRef.current) {
-      const editableLayer = geoJsonLayerRef.current;
-      const editControl = new L.Control.Draw({
-        edit: {
-          featureGroup: editableLayer,
-          remove: false
-        },
-        draw: false,
-      });
-      map.addControl(editControl);
-      map.on(L.Draw.Event.EDITED, (event) => {
-        const layers = event.layers;
-        layers.eachLayer((layer) => {
-          const updatedFeature = layer.toGeoJSON();
-          setGeoData((prevGeoData) => {
-            const updatedFeatures = prevGeoData.features.map(feature =>
-              feature.id === updatedFeature.id ? updatedFeature : feature
-            );
-            return { type: 'FeatureCollection', features: updatedFeatures };
-          });
-        });
-      });
-    }
-  };
-
   // Разбиение выбранной линии на сегменты заданного размера
   const chunkSelectedLineString = (degree) => {
     if (selectedLinesRef.current.length !== 1) {
@@ -466,6 +479,7 @@ function App() {
         setShouldFitBounds={setShouldFitBounds}
 
         />}
+         <MapControls setGeoData={setGeoData} geoJsonLayerRef={geoJsonLayerRef} />
       </MapContainer>
       <AppBar position="fixed" color="primary" sx={{ opacity: 0.9 }}>
         <Toolbar>
@@ -488,38 +502,35 @@ function App() {
             <input type="file" accept=".geojson" onChange={handleFileUploadParser} hidden />
           </MenuItem>
         </Menu>
-          <Tooltip title="Draw Line">
-            <IconButton onClick={initializeDrawControl}>
-              <PolylineIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Create Lines and Polygon">
-            <IconButton onClick={() => { createLinesAndPolygon()}}>
-              <PolylineIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Enable Editing">
-            <IconButton onClick={() => enableEditing()}>
-              <CreateIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={selectionMode ? "Exit Selection Mode" : "Enter Selection Mode"}>
-            <IconButton onClick={() => toggleSelectionMode()}>
+        <Tooltip title={selectionMode ? "Exit Selection Mode" : "Enter Selection Mode"}>
+            <IconButton
+              onClick={() => toggleSelectionMode()}
+              color={selectionMode ? "secondary" : "default"} // Меняем цвет в зависимости от selectionMode
+            >
               <SelectAllIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Simplify Selected LineString">
-            <IconButton onClick={simplifySelectedLine}>
-              <AddIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Chunk Selected LineString">
-            <IconButton onClick={() => { chunkSelectedLineString(0.03)}}>
+          <Tooltip title="Create Lines and Polygon">
+            <IconButton onClick={() => { createLinesAndPolygon()}}
+              disabled={!selectionMode}>
               <PolylineIcon />
             </IconButton>
           </Tooltip>
+          <Tooltip title="Simplify Selected LineString">
+            <IconButton onClick={simplifySelectedLine}
+            disabled={!selectionMode}>
+              <CompressIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Chunk Selected LineString">
+            <IconButton onClick={() => { chunkSelectedLineString(0.03)}}
+              disabled={!selectionMode}>
+              <ContentCutIcon />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Debug Options">
-            <IconButton onClick={handleMenuOpen}>
+            <IconButton onClick={handleMenuOpen}
+            disabled={!selectionMode}>
               <MoreVertIcon />
             </IconButton>
           </Tooltip>
