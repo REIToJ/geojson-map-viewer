@@ -26,6 +26,7 @@ function App() {
 
     reader.onload = (e) => {
       let data = JSON.parse(e.target.result);
+      data = removeDuplicateLines(data); // Удаляем дублирующиеся линии перед обновлением состояния
       setGeoData(data);
       setParserMode(false);
     };
@@ -33,6 +34,26 @@ function App() {
     if (file) {
       reader.readAsText(file);
     }
+  };
+
+  // Функция для удаления дублирующихся линий из GeoJSON
+  const removeDuplicateLines = (geojson) => {
+    const uniqueFeatures = [];
+    const seenCoordinates = new Set();
+
+    geojson.features.forEach((feature) => {
+      if (feature.geometry.type === 'LineString') {
+        const coordsString = JSON.stringify(feature.geometry.coordinates);
+        if (!seenCoordinates.has(coordsString)) {
+          seenCoordinates.add(coordsString);
+          uniqueFeatures.push(feature);
+        }
+      } else {
+        uniqueFeatures.push(feature);
+      }
+    });
+
+    return { type: 'FeatureCollection', features: uniqueFeatures };
   };
 
   // Обработчик загрузки файла, конвертирующий данные в WGS84
@@ -43,6 +64,7 @@ function App() {
     reader.onload = (e) => {
       let data = JSON.parse(e.target.result);
       data = convertToWgs84(data);
+      data = removeDuplicateLines(data); // Удаляем дублирующиеся линии перед обновлением состояния
       setGeoData(data);
       setParserMode(true);
     };
