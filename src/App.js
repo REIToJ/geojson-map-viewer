@@ -5,6 +5,8 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import L from 'leaflet';
 import 'leaflet-draw';
 import * as turf from '@turf/turf';
+import proj4 from 'proj4';
+import { toWgs84 } from '@turf/projection';
 import './App.css';
 
 function App() {
@@ -19,12 +21,22 @@ function App() {
     const reader = new FileReader();
 
     reader.onload = (e) => {
-      const data = JSON.parse(e.target.result);
+      let data = JSON.parse(e.target.result);
+      data = convertToWgs84(data);
       setGeoData(data);
     };
 
     if (file) {
       reader.readAsText(file);
+    }
+  };
+
+  const convertToWgs84 = (geojson) => {
+    try {
+      return toWgs84(geojson);
+    } catch (error) {
+      console.error('Ошибка при преобразовании координат:', error);
+      return geojson;
     }
   };
 
