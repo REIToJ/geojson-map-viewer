@@ -19,6 +19,8 @@ import CreateIcon from '@mui/icons-material/Create';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import CompressIcon from '@mui/icons-material/Compress';
+import { Alert, Snackbar } from '@mui/material';
+
 
 function App() {
   // Состояние для хранения данных GeoJSON и режима выбора
@@ -31,6 +33,10 @@ function App() {
   const selectedLinesRef = useRef([]);
   const [fileUploadAnchorEl, setFileUploadAnchorEl] = useState(null);
   const [shouldFitBounds, setShouldFitBounds] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertSeverity, setAlertSeverity] = useState('warning'); // 'error', 'warning', 'info', 'success'
+  const [alertMessage, setAlertMessage] = useState('');
+
 
 
   const handleFileUploadMenuOpen = (event) => {
@@ -40,6 +46,13 @@ function App() {
   const handleFileUploadMenuClose = () => {
     setFileUploadAnchorEl(null);
   };
+
+  const showAlert = (message, severity = 'warning') => {
+    setAlertMessage(message);
+    setAlertSeverity(severity);
+    setAlertOpen(true);
+  };
+  
 
   // Обработчик загрузки файла
   const handleFileUpload = (event) => {
@@ -414,7 +427,7 @@ function App() {
   // Упрощение выбранной линии для уменьшения количества точек
   const simplifySelectedLine = () => {
     if (selectedLinesRef.current.length !== 1) {
-      alert('Please select a single LineString to simplify.');
+      showAlert('Please select a single LineString to simplify.', 'warning');
       return;
     }
 
@@ -551,6 +564,16 @@ function App() {
           </Menu>
         </Toolbar>
       </AppBar>
+      <Snackbar
+        open={alertOpen}
+        autoHideDuration={6000}
+        onClose={() => setAlertOpen(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setAlertOpen(false)} severity={alertSeverity} sx={{ width: '100%' }}>
+          {alertMessage}
+        </Alert>
+      </Snackbar>
     </div>
   );
 }
