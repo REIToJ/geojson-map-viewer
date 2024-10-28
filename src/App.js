@@ -27,7 +27,8 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ContentCutIcon from "@mui/icons-material/ContentCut";
 import CompressIcon from "@mui/icons-material/Compress";
 import { Alert, Snackbar } from "@mui/material";
-import MapControls from './MapControls'; // Обновленный импорт
+import MapControls from './MapControls';
+import GeoJSONWithBounds from './GeoJSONWithBounds'; 
 
 function App() {
   // Состояние для хранения данных GeoJSON и режима выбора
@@ -136,62 +137,6 @@ function App() {
   // Обработчик закрытия меню Debug
   const handleMenuClose = () => {
     setAnchorEl(null);
-  };
-
-  // Компонент GeoJSON, который обновляет и отображает данные на карте
-  const GeoJSONWithBounds = ({ data, shouldFitBounds, setShouldFitBounds }) => {
-    const map = useMap();
-    React.useEffect(() => {
-      if (geoJsonLayerRef.current) {
-        geoJsonLayerRef.current.clearLayers();
-      }
-      const geoJsonLayer = L.geoJSON(data, {
-        // Отключаем загрузку маркеров для точек
-        pointToLayer: () => null,
-        // Устанавливаем стили для исходных и созданных линий
-        style: (feature) => {
-          if (feature.properties && feature.properties.tag === "created-line") {
-            return { color: "green" };
-          } else if (
-            feature.properties &&
-            feature.properties.tag === "connecting-line"
-          ) {
-            return { color: "green" };
-          } else {
-            return { color: "#3388ff" };
-          }
-        },
-        // Обработка кликов по каждой геометрической сущности
-        onEachFeature: (feature, layer) => {
-          if (feature.geometry.type === "LineString") {
-            layer.on("click", () => {
-              if (selectionMode) {
-                // Выделяем или снимаем выделение с линии в режиме выбора
-                if (selectedLinesRef.current.includes(layer)) {
-                  layer.setStyle({ color: "#3388ff" });
-                  selectedLinesRef.current = selectedLinesRef.current.filter(
-                    (l) => l !== layer
-                  );
-                } else {
-                  layer.setStyle({ color: "red" });
-                  selectedLinesRef.current.push(layer);
-                }
-              } else {
-                console.log("LineString feature:", feature);
-              }
-            });
-          }
-        },
-      });
-      geoJsonLayerRef.current = geoJsonLayer;
-      geoJsonLayer.addTo(map);
-      if (data.features.length > 0 && shouldFitBounds) {
-        map.fitBounds(geoJsonLayer.getBounds());
-        setShouldFitBounds(false); // Сбрасываем флаг после оцентровки
-      }
-    }, [data, map, shouldFitBounds, setShouldFitBounds]);
-
-    return null;
   };
 
   // Очистка всех данных GeoJSON
@@ -447,9 +392,12 @@ function App() {
         )}
         {geoData && (
           <GeoJSONWithBounds
-            data={geoData}
-            shouldFitBounds={shouldFitBounds}
-            setShouldFitBounds={setShouldFitBounds}
+          data={geoData}
+          shouldFitBounds={shouldFitBounds}
+          setShouldFitBounds={setShouldFitBounds}
+          selectionMode={selectionMode}
+          selectedLinesRef={selectedLinesRef}
+          geoJsonLayerRef={geoJsonLayerRef}
           />
         )}
         <MapControls
