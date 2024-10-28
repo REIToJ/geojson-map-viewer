@@ -25,6 +25,7 @@ import ContentCutIcon from "@mui/icons-material/ContentCut";
 import CompressIcon from "@mui/icons-material/Compress";
 import { Alert, Snackbar } from "@mui/material";
 import { handleFileUpload, handleFileUploadParser } from "./fileHandlers";
+import AlertComponent from "./AlertComponent";
 
 function App() {
   // Состояние для хранения данных GeoJSON и режима выбора
@@ -43,6 +44,7 @@ function App() {
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertSeverity, setAlertSeverity] = useState("warning"); // 'error', 'warning', 'info', 'success'
   const [alertMessage, setAlertMessage] = useState("");
+  
 
   const handleFileUploadMenuOpen = (event) => {
     setFileUploadAnchorEl(event.currentTarget);
@@ -50,6 +52,16 @@ function App() {
 
   const handleFileUploadMenuClose = () => {
     setFileUploadAnchorEl(null);
+  };
+
+   // Обработчик открытия меню Debug
+   const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  // Обработчик закрытия меню Debug
+  const handleMenuClose = () => {
+    setAnchorEl(null);
   };
 
   const showAlert = (message, severity = "warning") => {
@@ -143,16 +155,6 @@ function App() {
     return null;
   };
 
-  // Обработчик открытия меню Debug
-  const handleMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  // Обработчик закрытия меню Debug
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
   // Компонент GeoJSON, который обновляет и отображает данные на карте
   const GeoJSONWithBounds = ({ data, shouldFitBounds, setShouldFitBounds }) => {
     const map = useMap();
@@ -212,6 +214,8 @@ function App() {
   // Очистка всех данных GeoJSON
   const clearGeoData = () => {
     setGeoData({ type: "FeatureCollection", features: [] });
+    selectedLinesRef.current = [];
+    showAlert("All GeoJSON data cleared.", "info");
   };
 
   // Переключение режима выбора объектов на карте
@@ -225,14 +229,67 @@ function App() {
 
   // Создание соединительных линий между концами выбранных линий
   const createConnectingLines = (fullCycle = false) => {
-    if (selectedLinesRef.current.length > 1) {
-      const lineFeatures = selectedLinesRef.current.map((layer) =>
-        layer.toGeoJSON()
-      );
+    if (selectedLinesRef.current.length <= 1) {
+      showAlert("Please select at least two LineStrings to create connecting lines.", "warning");
+      selectedLinesRef.current = [];
+      return;
+    }
+      // Объединяем линии идущие от конца одной к началу дргой
+    let combinedLines = [];
+    const usedLines = new Set();
+
+    selectedLinesRef.current.forEach((lineLayer, i) => {
+      if (usedLines.has(i)) return;
+
+      let currentLine = lineLayer.toGeoJSON();
+      let combined = false;
+
+      selectedLinesRef.current.forEach((otherLineLayer, j) => {
+        if (i !== j && !usedLines.has(j)) {
+          const otherLine = otherLineLayer.toGeoJSON();
+          const currentCoords = currentLine.geometry.coordinates;
+          const otherCoords = otherLine.geometry.coordinates;
+
+          // Проверяем, является ли конец текущей линии началом другой линии
+          if (
+            turf.booleanEqual(
+              turf.point(currentCoords[currentCoords.length - 1]),
+              turf.point(otherCoords[0])
+            )
+          ) {
+            currentLine.geometry.coordinates = [
+              ...currentCoords,
+              ...otherCoords.slice(1),
+            ];
+            usedLines.add(j);
+            combined = true;
+          }
+          // Проверяем, является ли начало текущей линии концом другой линии
+          else if (
+            turf.booleanEqual(
+              turf.point(currentCoords[0]),
+              turf.point(otherCoords[otherCoords.length - 1])
+            )
+          ) {
+            currentLine.geometry.coordinates = [
+              ...otherCoords,
+              ...currentCoords.slice(1),
+            ];
+            usedLines.add(j);
+            combined = true;
+          }
+        }
+      });
+
+      if (combined) {
+        usedLines.add(i);
+      }
+      combinedLines.push(currentLine);
+    });
       const allFirstAndLastCoords = [];
 
       // Получаем все первые и последние координаты каждой линии
-      lineFeatures.forEach((line) => {
+      combinedLines.forEach((line) => {
         allFirstAndLastCoords.push(line.geometry.coordinates[0]);
         allFirstAndLastCoords.push(
           line.geometry.coordinates[line.geometry.coordinates.length - 1]
@@ -302,12 +359,16 @@ function App() {
       } else {
         selectedLinesRef.current = [];
       }
-    }
     return [];
   };
 
   // Создание полигона из выбранных и соединенных линий
   const createPolygonFromLines = (lines = []) => {
+    if (selectedLinesRef.current.length <= 1) {
+      showAlert("Please select at least two LineStrings.", "warning");
+      selectedLinesRef.current = [];
+      return;
+    }
     if (geoJsonLayerRef.current) {
       if (!Array.isArray(lines)) {
         lines = [];
@@ -369,7 +430,8 @@ function App() {
   // Разбиение выбранной линии на сегменты заданного размера
   const chunkSelectedLineString = (degree) => {
     if (selectedLinesRef.current.length !== 1) {
-      alert("Please select a single LineString to chunk.");
+      showAlert("Please select a single LineString to chunk.", "warning");
+      selectedLinesRef.current = [];
       return;
     }
 
@@ -380,23 +442,34 @@ function App() {
     }
 
     const chunked = turf.lineChunk(selectedLine, degree, { units: "radians" });
+    geoJsonLayerRef.current.removeLayer(selectedLinesRef.current[0]); // Удаляем старую линию
+    setGeoData((prevGeoData) => ({
+      type: "FeatureCollection",
+      features: prevGeoData.features.filter(
+        (feature) =>
+          feature.properties &&
+          feature.properties.id !== selectedLine.properties.id
+      ),
+    }));
+    selectedLinesRef.current = [];
     setGeoData((prevGeoData) => ({
       type: "FeatureCollection",
       features: [...prevGeoData.features, ...chunked.features],
     }));
-    selectedLinesRef.current = [];
   };
 
   // Упрощение выбранной линии для уменьшения количества точек
   const simplifySelectedLine = () => {
     if (selectedLinesRef.current.length !== 1) {
       showAlert("Please select a single LineString to simplify.", "warning");
+      selectedLinesRef.current = [];
       return;
     }
 
     const selectedLine = selectedLinesRef.current[0].toGeoJSON();
     if (selectedLine.geometry.type !== "LineString") {
       alert("Selected feature is not a LineString.");
+      selectedLinesRef.current = [];
       return;
     }
 
@@ -550,7 +623,7 @@ function App() {
           <Tooltip title="Chunk Selected LineString">
             <IconButton
               onClick={() => {
-                chunkSelectedLineString(0.03);
+                chunkSelectedLineString(0.00003);
               }}
               disabled={!selectionMode}
             >
@@ -594,20 +667,12 @@ function App() {
           </Menu>
         </Toolbar>
       </AppBar>
-      <Snackbar
+      <AlertComponent
         open={alertOpen}
-        autoHideDuration={6000}
+        message={alertMessage}
+        severity={alertSeverity}
         onClose={() => setAlertOpen(false)}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert
-          onClose={() => setAlertOpen(false)}
-          severity={alertSeverity}
-          sx={{ width: "100%" }}
-        >
-          {alertMessage}
-        </Alert>
-      </Snackbar>
+      />
     </div>
   );
 }
