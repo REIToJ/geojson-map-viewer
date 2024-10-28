@@ -1,13 +1,11 @@
 import React, { useState, useRef } from "react";
-import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
+import { MapContainer, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-draw/dist/leaflet.draw.css";
 import L from "leaflet";
 import "leaflet-draw";
 import * as turf from "@turf/turf";
-import proj4 from "proj4";
 import simplify from "simplify-js";
-import { toWgs84 } from "@turf/projection";
 import "./App.css";
 import {
   AppBar,
@@ -22,13 +20,13 @@ import ClearIcon from "@mui/icons-material/Clear";
 import PolylineIcon from "@mui/icons-material/Timeline";
 import SelectAllIcon from "@mui/icons-material/SelectAll";
 import AddIcon from "@mui/icons-material/Add";
-import CreateIcon from "@mui/icons-material/Create";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ContentCutIcon from "@mui/icons-material/ContentCut";
 import CompressIcon from "@mui/icons-material/Compress";
 import { Alert, Snackbar } from "@mui/material";
-import MapControls from './MapControls';
-import GeoJSONWithBounds from './GeoJSONWithBounds'; 
+import MapControls from "./MapControls";
+import GeoJSONWithBounds from "./GeoJSONWithBounds";
+import { handleFileUpload, handleFileUploadParser } from "./fileHandlers";
 
 function App() {
   // Состояние для хранения данных GeoJSON и режима выбора
@@ -40,7 +38,6 @@ function App() {
   const [parserMode, setParserMode] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const geoJsonLayerRef = useRef(null);
-  const drawControlRef = useRef(null);
   const selectedLinesRef = useRef([]);
   const [fileUploadAnchorEl, setFileUploadAnchorEl] = useState(null);
   const [shouldFitBounds, setShouldFitBounds] = useState(false);
@@ -56,79 +53,6 @@ function App() {
     setFileUploadAnchorEl(null);
   };
 
-  const showAlert = (message, severity = "warning") => {
-    setAlertMessage(message);
-    setAlertSeverity(severity);
-    setAlertOpen(true);
-  };
-
-  // Обработчик загрузки файла
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      let data = JSON.parse(e.target.result);
-      data = removeDuplicateLines(data); // Удаляем дублирующиеся линии перед обновлением состояния
-      setGeoData(data);
-      setParserMode(false);
-      setShouldFitBounds(true);
-    };
-
-    if (file) {
-      reader.readAsText(file);
-    }
-  };
-
-  // Функция для удаления дублирующихся линий из GeoJSON
-  const removeDuplicateLines = (geojson) => {
-    const uniqueFeatures = [];
-    const seenCoordinates = new Set();
-
-    geojson.features.forEach((feature) => {
-      if (feature.geometry.type === "LineString") {
-        const coordsString = JSON.stringify(feature.geometry.coordinates);
-        if (!seenCoordinates.has(coordsString)) {
-          seenCoordinates.add(coordsString);
-          uniqueFeatures.push(feature);
-        }
-      } else {
-        uniqueFeatures.push(feature);
-      }
-    });
-
-    return { type: "FeatureCollection", features: uniqueFeatures };
-  };
-
-  // Обработчик загрузки файла, конвертирующий данные в WGS84
-  const handleFileUploadParser = (event) => {
-    const file = event.target.files[0];
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      let data = JSON.parse(e.target.result);
-      data = convertToWgs84(data);
-      data = removeDuplicateLines(data); // Удаляем дублирующиеся линии перед обновлением состояния
-      setGeoData(data);
-      setParserMode(true);
-      setShouldFitBounds(true); // Указываем, что нужно оцентровать карту
-    };
-
-    if (file) {
-      reader.readAsText(file);
-    }
-  };
-
-  // Функция для конвертации координат в систему WGS84
-  const convertToWgs84 = (geojson) => {
-    try {
-      return toWgs84(geojson);
-    } catch (error) {
-      console.error("Ошибка при преобразовании координат:", error);
-      return geojson;
-    }
-  };
-
   // Обработчик открытия меню Debug
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -137,6 +61,12 @@ function App() {
   // Обработчик закрытия меню Debug
   const handleMenuClose = () => {
     setAnchorEl(null);
+  };
+
+  const showAlert = (message, severity = "warning") => {
+    setAlertMessage(message);
+    setAlertSeverity(severity);
+    setAlertOpen(true);
   };
 
   // Очистка всех данных GeoJSON
@@ -227,7 +157,7 @@ function App() {
         }));
       }
 
-      if (fullCycle == true) {
+      if (fullCycle === true) {
         return newConnectingLines;
       } else {
         selectedLinesRef.current = [];
@@ -392,12 +322,12 @@ function App() {
         )}
         {geoData && (
           <GeoJSONWithBounds
-          data={geoData}
-          shouldFitBounds={shouldFitBounds}
-          setShouldFitBounds={setShouldFitBounds}
-          selectionMode={selectionMode}
-          selectedLinesRef={selectedLinesRef}
-          geoJsonLayerRef={geoJsonLayerRef}
+            data={geoData}
+            shouldFitBounds={shouldFitBounds}
+            setShouldFitBounds={setShouldFitBounds}
+            selectionMode={selectionMode}
+            selectedLinesRef={selectedLinesRef}
+            geoJsonLayerRef={geoJsonLayerRef}
           />
         )}
         <MapControls
@@ -422,7 +352,14 @@ function App() {
               <input
                 type="file"
                 accept=".geojson"
-                onChange={handleFileUpload}
+                onChange={(event) =>
+                  handleFileUpload(
+                    event,
+                    setGeoData,
+                    setParserMode,
+                    setShouldFitBounds
+                  )
+                }
                 hidden
               />
             </MenuItem>
@@ -431,7 +368,14 @@ function App() {
               <input
                 type="file"
                 accept=".geojson"
-                onChange={handleFileUploadParser}
+                onChange={(event) =>
+                  handleFileUploadParser(
+                    event,
+                    setGeoData,
+                    setParserMode,
+                    setShouldFitBounds
+                  )
+                }
                 hidden
               />
             </MenuItem>
