@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { MapContainer, TileLayer } from "react-leaflet";
+import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-draw/dist/leaflet.draw.css";
 import L from "leaflet";
@@ -24,8 +24,6 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ContentCutIcon from "@mui/icons-material/ContentCut";
 import CompressIcon from "@mui/icons-material/Compress";
 import { Alert, Snackbar } from "@mui/material";
-import MapControls from "./MapControls";
-import GeoJSONWithBounds from "./GeoJSONWithBounds";
 import { handleFileUpload, handleFileUploadParser } from "./fileHandlers";
 
 function App() {
@@ -38,6 +36,7 @@ function App() {
   const [parserMode, setParserMode] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const geoJsonLayerRef = useRef(null);
+  const drawControlRef = useRef(null);
   const selectedLinesRef = useRef([]);
   const [fileUploadAnchorEl, setFileUploadAnchorEl] = useState(null);
   const [shouldFitBounds, setShouldFitBounds] = useState(false);
@@ -53,6 +52,97 @@ function App() {
     setFileUploadAnchorEl(null);
   };
 
+  const showAlert = (message, severity = "warning") => {
+    setAlertMessage(message);
+    setAlertSeverity(severity);
+    setAlertOpen(true);
+  };
+
+  const MapControls = ({ setGeoData, geoJsonLayerRef }) => {
+    const map = useMap();
+
+    React.useEffect(() => {
+      // Проверяем, были ли уже добавлены контролы
+      if (map._controlsAdded) return;
+      map._controlsAdded = true;
+
+      // Создаем группу слоев для нарисованных объектов
+      const drawnItems = geoJsonLayerRef.current || new L.FeatureGroup();
+      if (!geoJsonLayerRef.current) {
+        geoJsonLayerRef.current = drawnItems;
+        map.addLayer(drawnItems);
+      }
+
+      // Добавляем контролы рисования и редактирования
+      const drawControl = new L.Control.Draw({
+        edit: {
+          featureGroup: drawnItems,
+          remove: false,
+        },
+        draw: {
+          polyline: true,
+          polygon: false,
+          circle: false,
+          marker: false,
+          rectangle: false,
+          circlemarker: false,
+        },
+      });
+      map.addControl(drawControl);
+
+      // Обработчики событий
+      const onDrawCreated = (event) => {
+        const layer = event.layer;
+        const drawnFeature = layer.toGeoJSON();
+        drawnFeature.properties = {
+          ...drawnFeature.properties,
+          tag: "created-line",
+        };
+
+        setGeoData((prevGeoData) => ({
+          type: "FeatureCollection",
+          features: [...prevGeoData.features, drawnFeature],
+        }));
+
+        drawnItems.addLayer(layer);
+      };
+
+      const onDrawEdited = (event) => {
+        const layers = event.layers;
+        const updatedFeatures = [];
+
+        layers.eachLayer((layer) => {
+          const updatedFeature = layer.toGeoJSON();
+          updatedFeatures.push(updatedFeature);
+        });
+
+        setGeoData((prevGeoData) => {
+          const features = prevGeoData.features.map((feature) => {
+            const updatedFeature = updatedFeatures.find(
+              (uf) => uf.id === feature.id
+            );
+            return updatedFeature || feature;
+          });
+          return { type: "FeatureCollection", features };
+        });
+      };
+
+      map.on(L.Draw.Event.CREATED, onDrawCreated);
+      map.on(L.Draw.Event.EDITED, onDrawEdited);
+
+      // Функция очистки
+      return () => {
+        map.off(L.Draw.Event.CREATED, onDrawCreated);
+        map.off(L.Draw.Event.EDITED, onDrawEdited);
+        map.removeControl(drawControl);
+        map.removeLayer(drawnItems);
+        delete map._controlsAdded;
+      };
+    }, []); // Пустой массив зависимостей, эффект выполнится только один раз при монтировании
+
+    return null;
+  };
+
   // Обработчик открытия меню Debug
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -63,10 +153,60 @@ function App() {
     setAnchorEl(null);
   };
 
-  const showAlert = (message, severity = "warning") => {
-    setAlertMessage(message);
-    setAlertSeverity(severity);
-    setAlertOpen(true);
+  // Компонент GeoJSON, который обновляет и отображает данные на карте
+  const GeoJSONWithBounds = ({ data, shouldFitBounds, setShouldFitBounds }) => {
+    const map = useMap();
+    React.useEffect(() => {
+      if (geoJsonLayerRef.current) {
+        geoJsonLayerRef.current.clearLayers();
+      }
+      const geoJsonLayer = L.geoJSON(data, {
+        // Отключаем загрузку маркеров для точек
+        pointToLayer: () => null,
+        // Устанавливаем стили для исходных и созданных линий
+        style: (feature) => {
+          if (feature.properties && feature.properties.tag === "created-line") {
+            return { color: "green" };
+          } else if (
+            feature.properties &&
+            feature.properties.tag === "connecting-line"
+          ) {
+            return { color: "green" };
+          } else {
+            return { color: "#3388ff" };
+          }
+        },
+        // Обработка кликов по каждой геометрической сущности
+        onEachFeature: (feature, layer) => {
+          if (feature.geometry.type === "LineString") {
+            layer.on("click", () => {
+              if (selectionMode) {
+                // Выделяем или снимаем выделение с линии в режиме выбора
+                if (selectedLinesRef.current.includes(layer)) {
+                  layer.setStyle({ color: "#3388ff" });
+                  selectedLinesRef.current = selectedLinesRef.current.filter(
+                    (l) => l !== layer
+                  );
+                } else {
+                  layer.setStyle({ color: "red" });
+                  selectedLinesRef.current.push(layer);
+                }
+              } else {
+                console.log("LineString feature:", feature);
+              }
+            });
+          }
+        },
+      });
+      geoJsonLayerRef.current = geoJsonLayer;
+      geoJsonLayer.addTo(map);
+      if (data.features.length > 0 && shouldFitBounds) {
+        map.fitBounds(geoJsonLayer.getBounds());
+        setShouldFitBounds(false); // Сбрасываем флаг после оцентровки
+      }
+    }, [data, map, shouldFitBounds, setShouldFitBounds]);
+
+    return null;
   };
 
   // Очистка всех данных GeoJSON
@@ -325,9 +465,6 @@ function App() {
             data={geoData}
             shouldFitBounds={shouldFitBounds}
             setShouldFitBounds={setShouldFitBounds}
-            selectionMode={selectionMode}
-            selectedLinesRef={selectedLinesRef}
-            geoJsonLayerRef={geoJsonLayerRef}
           />
         )}
         <MapControls
