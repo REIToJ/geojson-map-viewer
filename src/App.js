@@ -362,6 +362,69 @@ function App() {
     return [];
   };
 
+  // Функция для соединения двух выбранных линий
+const connectTwoLines = () => {
+  if (selectedLinesRef.current.length !== 2) {
+    showAlert("Please select exactly two LineStrings to connect.", "warning");
+    return;
+  }
+
+  const line1 = selectedLinesRef.current[0].toGeoJSON();
+  const line2 = selectedLinesRef.current[1].toGeoJSON();
+
+  const line1Start = line1.geometry.coordinates[0];
+  const line1End = line1.geometry.coordinates[line1.geometry.coordinates.length - 1];
+  const line2Start = line2.geometry.coordinates[0];
+  const line2End = line2.geometry.coordinates[line2.geometry.coordinates.length - 1];
+
+  // Найдем комбинацию концов линий с минимальным расстоянием
+  const combinations = [
+    { pointA: line1Start, pointB: line2Start },
+    { pointA: line1Start, pointB: line2End },
+    { pointA: line1End, pointB: line2Start },
+    { pointA: line1End, pointB: line2End },
+  ];
+
+  let minDistance = Infinity;
+  let closestPoints = null;
+
+  combinations.forEach(({ pointA, pointB }) => {
+    const distance = turf.distance(turf.point(pointA), turf.point(pointB));
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestPoints = { pointA, pointB };
+    }
+  });
+
+  if (closestPoints) {
+    // Создаем новую линию между двумя ближайшими точками
+    const newLine = turf.lineString([closestPoints.pointA, closestPoints.pointB], {
+      tag: "connecting-line",
+    });
+
+    // Добавляем новую линию на карту
+    const map = geoJsonLayerRef.current._map;
+    const newLineLayer = L.geoJSON(newLine, {
+      style: { color: "green" },
+    }).addTo(map);
+
+    // Добавляем новую линию в geoJsonLayer
+    if (geoJsonLayerRef.current) {
+      geoJsonLayerRef.current.addLayer(newLineLayer);
+    }
+
+    // Обновляем geoData, добавляя новую соединяющую линию
+    setGeoData((prevGeoData) => ({
+      type: "FeatureCollection",
+      features: [...prevGeoData.features, newLine],
+    }));
+
+    // Снимаем выделение с выбранных линий
+    selectedLinesRef.current.forEach((layer) => layer.setStyle({ color: "#3388ff" }));
+    selectedLinesRef.current = [];
+  }
+};
+
   // Создание полигона из выбранных и соединенных линий
   const createPolygonFromLines = (lines = []) => {
     if (selectedLinesRef.current.length <= 1) {
@@ -655,6 +718,14 @@ function App() {
               }}
             >
               <AddIcon /> Create Connecting Lines
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                connectTwoLines();
+                handleMenuClose();
+              }}
+            >
+              <AddIcon /> Connect Two lines
             </MenuItem>
             <MenuItem
               onClick={() => {
